@@ -1,0 +1,93 @@
+import cv2
+import numpy as np
+
+# --- 1. ตั้งค่าช่วงสีต่างๆ ในระบบ HSV ---
+# ถ้าใช้กล้องจริง แสงในห้องจะมีผลมาก ถ้าสีไหนไม่ติด ลองปรับเพิ่ม/ลดช่วงดูนะมึง
+color_ranges = {
+    "RED": {
+        "lower": np.array([0, 120, 70]),
+        "upper": np.array([10, 255, 255]),
+        "bgr_color": (0, 0, 255)  # กรอบสีแดง
+    },
+    "YELLOW": {
+        "lower": np.array([15, 100, 100]),
+        "upper": np.array([35, 255, 255]),
+        "bgr_color": (0, 255, 255) # กรอบสีเหลือง
+    },
+    "GREEN": {
+        "lower": np.array([36, 100, 100]),
+        "upper": np.array([85, 255, 255]),
+        "bgr_color": (0, 255, 0)   # กรอบสีเขียว
+    },
+    "BLUE": {
+        "lower": np.array([90, 100, 100]),
+        "upper": np.array([130, 255, 255]),
+        "bgr_color": (255, 0, 0)   # กรอบสีน้ำเงิน
+    },
+    "ORANGE": {
+        "lower": np.array([11, 100, 100]),
+        "upper": np.array([25, 255, 255]),
+        "bgr_color": (0, 165, 255) # กรอบสีส้ม
+    }
+}
+
+# --- 2. เปิดกล้อง Webcam ---
+# เลข 0 คือกล้องหลักของคอม/โน้ตบุ๊ก ถ้ามึงต่อเว็บแคมแยกแล้วไม่ขึ้น ให้ลองเปลี่ยนเป็น 1 หรือ 2
+cap = cv2.VideoCapture(0)
+
+if not cap.isOpened():
+    print("Error: เปิดกล้องไม่ได้ว่ะมึง เช็กสายต่อหรือสิทธิ์การเข้าถึงกล้องด่วน!")
+    exit()
+
+print("เปิดกล้องสำเร็จ! กดปุ่ม 'q' บนคีย์บอร์ดเพื่อปิดโปรแกรมนะมึง...")
+
+while True:
+    # 3. อ่านภาพจากกล้องทีละเฟรม
+    ret, frame = cap.read()
+    if not ret:
+        print("Error: ดึงภาพจากกล้องไม่ได้ว่ะ")
+        break
+
+    # 4. แปลงเฟรมภาพเป็น HSV
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+    # 5. วนลูปเช็กทีละสี
+    for color_name, values in color_ranges.items():
+        # กรองสี
+        mask = cv2.inRange(hsv, values["lower"], values["upper"])
+        
+        # หาเส้นรอบรูป (Contours)
+        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        
+        for c in contours:
+            # กรอง Noise (ถ้าพื้นที่สีมันเล็กกว่า 500 พิกเซล ข้ามไปเลย จะได้ไม่จับมั่ว)
+            if cv2.contourArea(c) < 500:
+                continue
+                
+            # หาพิกัดกล่องรอบวัตถุ
+            x, y, w, h = cv2.boundingRect(c)
+            
+            # คำนวณจุดกึ่งกลาง (Center X, Center Y) เพื่อเอาไปสั่งแขนกล
+            center_x = int(x + (w / 2))
+            center_y = int(y + (h / 2))
+            
+            # วาดกรอบสี่เหลี่ยมรอบวัตถุสีนั้นๆ
+            cv2.rectangle(frame, (x, y), (x + w, y + h), values["bgr_color"], 2)
+            
+            # วาดจุดวงกลมเล็กๆ ตรงกลางวัตถุ
+            cv2.circle(frame, (center_x, center_y), 5, values["bgr_color"], -1)
+            
+            # เขียนป้ายชื่อสี + พิกัด แปะไว้บนหัวกล่อง
+            label = f"{color_name} ({center_x}, {center_y})"
+            cv2.putText(frame, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, values["bgr_color"], 2)
+
+    # 6. แสดงผลหน้าจอกล้องสดๆ ที่ตีกรอบแล้ว
+    cv2.imshow('Real-time Robotic Arm Vision', frame)
+
+    # 7. ดักจับปุ่มกด ถ้ากด 'q' ให้ปิดโปรแกรม
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# คืนรูป คืนกล้อง เคลียร์หน่วยความจำ
+cap.release()
+cv2.destroyAllWindows()
